@@ -28,7 +28,7 @@ CleanSoundLibrary {
 		this.freeAllSoundFiles;
 	}
 
-	addBuffer { |name, buffer, appendToExisting = false|
+	addBuffer { |name, buffer, appendToExisting = false, cued = false|
 		var event;
 		if(buffer.isNil) { Error("tried to add Nil to buffer library").throw };
 		if(synthEvents[name].notNil) {
@@ -40,7 +40,7 @@ CleanSoundLibrary {
 			"\nreplacing '%' (%)\n".postf(name, buffers[name].size);
 			this.freeSoundFiles(name);
 		};
-		event = this.makeEventForBuffer(buffer);
+		event = if(cued, {this.makeEventForCuedBuffer(buffer)}, {this.makeEventForBuffer(buffer)});
 		buffers[name] = buffers[name].add(buffer);
 		bufferEvents[name] = bufferEvents[name].add(event);
 		if(verbose) { "new sample buffer named '%':\n%\n\n".postf(name, event) };
@@ -136,6 +136,72 @@ CleanSoundLibrary {
 			})
 		});
 		^path
+	}
+
+	//cueOnly
+
+	cueSoundFiles { |paths, appendToExisting = false, namingFunction = (_.basename)| // paths are folderPaths
+		var folderPaths, memory;
+		var defaultSamplePath =  this.prGetSuperCleanPath +/+ "clean-samples/*"; // Will wildcard work on "other" os's?
+
+		paths = paths ?? { defaultSamplePath };
+		folderPaths = if(paths.isString) { paths.pathMatch } { paths.asArray };
+		folderPaths = folderPaths.select(_.endsWith(Platform.pathSeparator.asString));
+		if(folderPaths.isEmpty) {
+			"no folders found in paths: '%'".format(paths).warn; ^this
+		};
+		memory = this.memoryFootprint;
+		"\ncueing % sample bank%:\n".postf(folderPaths.size, if(folderPaths.size > 1) { "snd" } { "" });
+		folderPaths.do { |folderPath|
+			this.cueSoundFileFolder(folderPath, namingFunction.(folderPath), appendToExisting)
+		};
+		"\nRequired % MB of memory.\n\n".format(
+			this.memoryFootprint - memory div: 1e6
+		).post;
+	}
+
+	cueSoundFileFolder { |folderPath, name, appendToExisting = false|
+		var files;
+
+		if(File.exists(folderPath).not) {
+			"\ncouldn't cue '%' files, path doesn't exist: %.".format(name, folderPath).postln;
+			^this
+		};
+
+		files = pathMatch(folderPath.standardizePath +/+ "*"); // dependent on operating system
+
+		if(files.notEmpty) {
+			name = name.asSymbol;
+			this.cueSoundFilePaths(files, name, appendToExisting);
+			"% (%) ".postf(name, buffers[name].size);
+		} {
+			"empty sample folder: %\n".postf(folderPath)
+		}
+
+	}
+
+	cueSoundFilePaths { |filePaths, name, appendToExisting = false|
+		var buf;
+
+		filePaths.do { |filepath|
+			try {
+				buf = this.cueSoundFile(filepath);
+				if(buf.notNil) {
+					this.addBuffer(name, buf, appendToExisting, true);
+					appendToExisting = true; // append all others
+				}
+			}
+		};
+
+	}
+
+	cueSoundFile { |path|
+		var fileExt = (path.splitext[1] ? "").toLower;
+		if(fileExtensions.includesEqual(fileExt).not) {
+			if(verbose) { "\nignored file: %\n".postf(path) };
+			^nil
+		}
+		^Buffer.cueWithInfo(server, path)
 	}
 
 	loadOnly { |names, path, appendToExisting = false|
@@ -261,6 +327,26 @@ CleanSoundLibrary {
 
 	instrumentForBuffer { |buffer|
 		^format("clean_sample_%_%", buffer.numChannels, this.numChannels).asSymbol
+	}
+
+	makeEventForCuedBuffer { |buffer|
+		var baseFreq = 60.midicps;
+		^(
+			buffer: buffer.bufnum,
+			instrument: this.instrumentForCuedBuffer(buffer),
+			bufNumFrames: buffer.numFrames,
+			bufNumChannels: buffer.numChannels,
+			unitDuration: { buffer.duration * baseFreq / ~freq.value },
+			hash: buffer.identityHash,
+			disk: true,
+			buf: buffer,
+			path: buffer.path,
+			note: 0
+		)
+	}
+
+	instrumentForCuedBuffer { |buffer|
+		^format("clean_sampledisk_%_%", buffer.numChannels, this.numChannels).asSymbol
 	}
 
 	openFolder { |name, index = 0|

@@ -227,13 +227,17 @@ CleanEvent {
 	}
 
 	playSynths {
-		var cutGroup;
+		var cutGroup, buffer;
 		~cut = ~cut.value;
 		if(~cut != 0) {
 			cutGroup = aux.getCutGroup(~cut);
 			~hash ?? { ~hash = ~snd.identityHash }; // just to be safe
 		};
-
+		if(currentEnvironment.proto[\disk].notNil, {
+			buffer = Buffer.cueSoundFile(server, currentEnvironment.proto.path.postln, 0);//TODO startFrame
+			currentEnvironment.proto.buffer = buffer.bufnum;
+			server.sync;
+		});
 		server.makeBundle(~latency, { // use this to build a bundle
 
 			aux.globalEffects.do { |x| x.set(currentEnvironment) };
@@ -244,6 +248,7 @@ CleanEvent {
 
 			this.prepareSynthGroup(cutGroup);
 			modules.do(_.value(this));
+			Group.basicNew(server, ~synthGroup).onFree({if(buffer.notNil, {buffer.close; buffer.free})});
 			this.sendGateSynth; // this one needs to be last
 
 		});

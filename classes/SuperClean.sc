@@ -88,6 +88,19 @@ SuperClean {
 		soundLibrary = argSoundLibrary;
 	}
 
+	//cueOnly
+	//cueSoundFileFolder
+
+	cueSoundFiles { |paths, appendToExisting = false, namingFunction|
+		soundLibrary.cueSoundFiles(paths, appendToExisting = false, namingFunction)
+	}
+
+	csf { |paths, appendToExisting = false, namingFunction|
+		soundLibrary.cueSoundFiles(paths, appendToExisting = false, namingFunction)
+	}
+
+	//cueSoundFile
+
 	loadOnly { |names, path, appendToExisting = false|
 		soundLibrary.loadOnly(names, path, appendToExisting )
 	}
